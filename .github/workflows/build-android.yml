@@ -211,6 +211,14 @@ jobs:
           echo "Using $APKSIGNER"
           "$APKSIGNER" verify --print-certs "$APK"
 
+      - name: Print APK metadata
+        run: |
+          set -e
+          TAG="build-${{ needs.prepare.outputs.sha }}-${{ needs.prepare.outputs.date }}"
+          APK="$GITHUB_WORKSPACE/touchHLE-$TAG.apk"
+          AAPT2="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/aapt2 | head -1)"
+          "$AAPT2" dump badging "$APK" | grep -E "^(package|application-label|application-icon-480|sdkVersion|targetSdkVersion|native-code)"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
