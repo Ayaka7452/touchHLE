@@ -202,10 +202,14 @@ jobs:
       - name: Verify APK signature
         run: |
           set -e
-          APK="$GITHUB_WORKSPACE/touchHLE.apk"
           TAG="build-${{ needs.prepare.outputs.sha }}-${{ needs.prepare.outputs.date }}"
-          mv "$APK" "$GITHUB_WORKSPACE/touchHLE-$TAG.apk"
-          "$ANDROID_SDK_ROOT/build-tools/"*/apksigner verify --print-certs "$GITHUB_WORKSPACE/touchHLE-$TAG.apk" | head -20
+          APK="$GITHUB_WORKSPACE/touchHLE-$TAG.apk"
+          mv "$GITHUB_WORKSPACE/touchHLE.apk" "$APK"
+          # Pick one build-tools version; a glob here would expand to several
+          # paths and apksigner would treat the extra ones as bad arguments.
+          APKSIGNER="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | head -1)"
+          echo "Using $APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
