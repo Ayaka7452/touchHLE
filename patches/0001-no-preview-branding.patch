@@ -1,0 +1,106 @@
+diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
+index ad7376c..d43018e 100644
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -44,11 +44,17 @@ android {
+         buildConfig = true
+     }
+     defaultConfig {
+-        val branding = getTouchHLEBranding()
++        // [fork patch] Upstream derives this from the touchHLE_version tool,
++        // which reports "PREVIEW" (or "UNOFFICIAL" for forks) and appends it to
++        // the app name, launcher icon and version name. This fork builds
++        // unbranded (see src/version/lib.rs), so the branding stays empty and
++        // the plain "touchHLE" name plus the standard @drawable/icon are used.
++        val branding = ""
+         applicationId = "org.touchhle.android"
+-        if (!branding.isEmpty()) {
+-            applicationIdSuffix = branding.lowercase()
+-        }
++        // [fork patch] Keep a distinct application ID regardless of branding, so
++        // this build can be installed alongside an official touchHLE release
++        // rather than clashing with it. Must match src/paths.rs.
++        applicationIdSuffix = "preview"
+         resValue("string", "app_name", join("touchHLE", " ", branding))
+         buildConfigField("String", "APP_NAME", "\"${join("touchHLE", " ", branding)}\"")
+         manifestPlaceholders["icon"] = join("@drawable/icon", "_", branding.lowercase())
+@@ -80,9 +86,28 @@ android {
+     kotlinOptions {
+         jvmTarget = "11"
+     }
++    // [fork patch] Release signing key, supplied through the environment by
++    // .github/workflows/. When it is absent (e.g. a local build) we simply
++    // fall back to the debug key instead of failing.
++    val forkKeystore =
++        System.getenv("KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
++    signingConfigs {
++        create("forkRelease") {
++            forkKeystore?.let {
++                storeFile = it
++                storePassword = System.getenv("KEYSTORE_PASSWORD")
++                keyAlias = System.getenv("KEY_ALIAS")
++                keyPassword = System.getenv("KEY_PASSWORD")
++            }
++        }
++    }
+     buildTypes {
+         release {
+-            signingConfig = signingConfigs.getByName("debug")
++            signingConfig = if (forkKeystore != null) {
++                signingConfigs.getByName("forkRelease")
++            } else {
++                signingConfigs.getByName("debug")
++            }
+             isMinifyEnabled = false
+             isDebuggable = true // allow use of ADB to manage files, etc
+         }
+diff --git a/src/paths.rs b/src/paths.rs
+index d0ab20b..76f6095 100644
+--- a/src/paths.rs
++++ b/src/paths.rs
+@@ -153,7 +153,12 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
+ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
+     if std::env::consts::OS == "android" {
+         // See DocumentsProvider.kt, app/build.gradle and AndroidManifest.xml
+-        let brand = crate::branding();
++        //
++        // [fork patch] This fork builds unbranded (see branding()), but keeps
++        // the ".preview" application ID suffix so it can coexist with an
++        // official touchHLE install. The provider authority has to match the
++        // application ID, so it is pinned here instead of being derived.
++        let brand = "preview";
+         Ok(format!(
+             "content://org.touchhle.android{}{}.provider/root/root",
+             if brand.is_empty() { "" } else { "." },
+diff --git a/src/version/lib.rs b/src/version/lib.rs
+index ff5a09d..41ece20 100644
+--- a/src/version/lib.rs
++++ b/src/version/lib.rs
+@@ -13,20 +13,11 @@ pub const GITHUB_REF_NAME: Option<&str> = option_env!("GITHUB_REF_NAME");
+ pub const GITHUB_EVENT_NAME: Option<&str> = option_env!("GITHUB_EVENT_NAME");
+ 
+ pub fn branding() -> &'static str {
+-    if GITHUB_RUN_ID.is_none() {
+-        return "";
+-    }
+-    if GITHUB_EVENT_NAME == Some("create")
+-        && VERSION
+-            .strip_prefix('v')
+-            .is_some_and(|v| v == env!("CARGO_PKG_VERSION"))
+-        && GITHUB_REF_NAME.unwrap() == VERSION
+-    {
+-        return "";
+-    }
+-    if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("touchHLE/touchHLE"), Some("trunk")) {
+-        "PREVIEW"
+-    } else {
+-        "UNOFFICIAL"
+-    }
++    // [fork patch] Ayaka7452/touchHLE: always report an unbranded build.
++    //
++    // Upstream returns "PREVIEW" (or "UNOFFICIAL" when built from a fork) for
++    // anything that isn't an official release, which draws a watermark on the
++    // main window/app picker and selects a dedicated launcher icon. This fork
++    // deliberately opts out: no watermark, and the standard release icon.
++    ""
+ }

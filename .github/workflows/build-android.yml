@@ -1,0 +1,251 @@
+# Build an Android APK of this touchHLE fork.
+#
+# Runs on a schedule and on demand. Each run:
+#   1. merges upstream touchHLE/touchHLE:trunk into this fork's trunk branch
+#   2. rebuilds the "release" branch as upstream + patches/*.patch
+#   3. builds a signed APK from the release branch
+#   4. publishes (or updates) a GitHub Release tagged build-<sha>-<date>
+#
+# If nothing changed upstream, the build is skipped so Actions minutes aren't
+# burned. A manual dispatch always builds.
+
+name: Build touchHLE fork (Android)
+
+on:
+  schedule:
+    # 18:00 UTC = 02:00 (UTC+8) the next day
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Sync upstream and apply fork patches
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.rebuild.outputs.changed }}
+      sha: ${{ steps.rebuild.outputs.sha }}
+      full_sha: ${{ steps.rebuild.outputs.full_sha }}
+      date: ${{ steps.rebuild.outputs.date }}
+    steps:
+      - name: Checkout trunk
+        uses: actions/checkout@v4
+        with:
+          ref: trunk
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge upstream trunk
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/touchHLE/touchHLE.git 2>/dev/null || true
+          git fetch upstream trunk
+          git merge --no-edit upstream/trunk
+          git push origin trunk
+
+      - name: Rebuild release branch (upstream + patches)
+        id: rebuild
+        run: |
+          set -e
+          FULL_SHA=$(git rev-parse upstream/trunk)
+          SHA=$(git rev-parse --short=8 upstream/trunk)
+          DATE=$(git show -s --format=%cd --date=format:%Y%m%d upstream/trunk)
+          echo "full_sha=$FULL_SHA" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "Upstream HEAD: $FULL_SHA ($SHA, $DATE)"
+
+          git checkout -B release trunk
+          for p in patches/*.patch; do
+            echo "Applying $p"
+            # --3way tolerates upstream edits that shift the patch context.
+            git apply --3way "$p"
+          done
+          git add -A
+          git commit -m "Apply fork patches on top of touchHLE/touchHLE@$SHA" || true
+
+          NEW_TREE=$(git rev-parse 'release^{tree}')
+          git fetch origin release 2>/dev/null || true
+          OLD_TREE=$(git rev-parse 'origin/release^{tree}' 2>/dev/null || true)
+
+          if [ -n "$OLD_TREE" ] && [ "$NEW_TREE" = "$OLD_TREE" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Release branch content is unchanged; skipping build."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git push origin release
+          fi
+
+  build:
+    name: Build, sign and release
+    needs: prepare
+    if: ${{ needs.prepare.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release
+          fetch-depth: 0
+
+      - name: Get submodules
+        run: git submodule update --init
+
+      - name: Cache Boost
+        id: cache-boost
+        uses: actions/cache@v4
+        with:
+          path: vendor/boost
+          key: boost_1_81_0
+      - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+        name: Download Boost
+        run: curl -L -o boost_1_81_0.7z "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.7z"
+      - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+        name: Extract Boost
+        run: 7z -ovendor x boost_1_81_0.7z && mv vendor/boost_1_81_0 vendor/boost
+
+      - name: Cache CMake
+        id: cache-cmake
+        uses: actions/cache@v4
+        with:
+          path: vendor/cmake
+          key: cmake_3_31_6_linux
+      - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+        name: Download CMake
+        run: curl -L -O "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz"
+      - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+        name: Extract CMake
+        run: tar xzvf cmake-3.31.6-linux-x86_64.tar.gz -C vendor && mv vendor/cmake-3.31.6-linux-x86_64 vendor/cmake
+
+      - name: Cache Gradle
+        id: cache-gradle
+        uses: actions/cache@v4
+        with:
+          path: gradle
+          key: gradle-8.11.1
+      - if: ${{ steps.cache-gradle.outputs.cache-hit != 'true' }}
+        name: Download Gradle
+        run: curl -L -o gradle-8.11.1-bin.zip "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+      - if: ${{ steps.cache-gradle.outputs.cache-hit != 'true' }}
+        name: Extract Gradle
+        run: 7z -ogradle x gradle-8.11.1-bin.zip
+
+      - name: Cache Android NDK
+        id: cache-android-ndk
+        uses: actions/cache@v4
+        with:
+          path: android-ndk
+          key: android-ndk-r25c
+      - if: ${{ steps.cache-android-ndk.outputs.cache-hit != 'true' }}
+        name: Download Android NDK
+        run: curl -L -o android-ndk-r25c-linux.zip "https://dl.google.com/android/repository/android-ndk-r25c-linux.zip"
+      - if: ${{ steps.cache-android-ndk.outputs.cache-hit != 'true' }}
+        name: Extract Android NDK
+        run: 7z -oandroid-ndk -snld x android-ndk-r25c-linux.zip
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Link Android NDK
+        run: ln -s "$PWD/android-ndk/android-ndk-r25c" "$ANDROID_SDK_ROOT/ndk/25.2.9519653"
+
+      - name: Generate local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Install AArch64 Android Rust toolchain
+        run: rustup target add aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk@3.5.4
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -e
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/sign.keystore"
+            echo "Signing key decoded."
+          else
+            echo "::warning::KEYSTORE_BASE64 is not set; the APK will use the debug key."
+          fi
+
+      - name: Build for Android
+        run: |
+          set -e
+          cd android
+          ../gradle/gradle-8.11.1/bin/gradle assembleRelease
+          mv app/build/outputs/apk/release/app-release.apk ../touchHLE.apk
+        env:
+          ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
+          CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+          KEYSTORE_FILE: ${{ github.workspace }}/sign.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Verify APK signature
+        run: |
+          set -e
+          APK="$GITHUB_WORKSPACE/touchHLE.apk"
+          TAG="build-${{ needs.prepare.outputs.sha }}-${{ needs.prepare.outputs.date }}"
+          mv "$APK" "$GITHUB_WORKSPACE/touchHLE-$TAG.apk"
+          "$ANDROID_SDK_ROOT/build-tools/"*/apksigner verify --print-certs "$GITHUB_WORKSPACE/touchHLE-$TAG.apk" | head -20
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: touchHLE-${{ needs.prepare.outputs.sha }}
+          path: touchHLE-build-${{ needs.prepare.outputs.sha }}-${{ needs.prepare.outputs.date }}.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          SHA="${{ needs.prepare.outputs.sha }}"
+          FULL_SHA="${{ needs.prepare.outputs.full_sha }}"
+          DATE="${{ needs.prepare.outputs.date }}"
+          TAG="build-$SHA-$DATE"
+          APK="$GITHUB_WORKSPACE/touchHLE-$TAG.apk"
+
+          {
+            echo "Automated build of a fork of [touchHLE/touchHLE](https://github.com/touchHLE/touchHLE)."
+            echo ""
+            echo "Upstream commit: [\`$FULL_SHA\`](https://github.com/touchHLE/touchHLE/commit/$FULL_SHA)"
+            echo ""
+            echo "### What this fork changes"
+            echo ""
+            echo "- Removes the \`PREVIEW\` watermark/branding from the main window and app picker."
+            echo "- Uses the standard touchHLE launcher icon instead of the \`PREVIEW\` icon."
+            echo "- Keeps the \`org.touchhle.android.preview\` application ID, so it installs"
+            echo "  alongside an official touchHLE release instead of clashing with it."
+            echo "- Signs the release APK with a personal key."
+            echo ""
+            echo "The changes are kept as patch files in \`patches/\` on the \`trunk\` branch and"
+            echo "applied onto upstream source on each build; the \`release\` branch holds the"
+            echo "result. Source is public here, as required by MPL-2.0."
+            echo ""
+            echo "This is an unofficial build. Official releases: https://touchhle.org/"
+          } > "$RUNNER_TEMP/notes.md"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber
+          else
+            gh release create "$TAG" "$APK" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
