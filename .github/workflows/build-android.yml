@@ -80,7 +80,9 @@ jobs:
             echo "Release branch content is unchanged; skipping build."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git push origin release
+            # The branch is regenerated from scratch each run, so the new
+            # commit is not a descendant of the previous one.
+            git push --force origin release
           fi
 
   build:
