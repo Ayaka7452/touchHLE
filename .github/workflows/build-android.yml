@@ -243,6 +243,9 @@ jobs:
             echo ""
             echo "Upstream commit: [\`$FULL_SHA\`](https://github.com/touchHLE/touchHLE/commit/$FULL_SHA)"
             echo ""
+            echo "APK built: $(date -u '+%Y-%m-%d %H:%M UTC') (the tag's date is the"
+            echo "upstream commit date, so it can be older than the build)."
+            echo ""
             echo "### What this fork changes"
             echo ""
             echo "- Removes the \`PREVIEW\` watermark/branding from the main window and app picker."
@@ -258,8 +261,12 @@ jobs:
             echo "This is an unofficial build. Official releases: https://touchhle.org/"
           } > "$RUNNER_TEMP/notes.md"
 
+          # The tag is derived from the upstream commit, so rebuilding the same
+          # commit reuses the release: replace the APK and refresh the notes,
+          # otherwise a rebuilt release would keep describing the old build.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
           else
             gh release create "$TAG" "$APK" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
           fi
