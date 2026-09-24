@@ -1,5 +1,5 @@
 diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
-index ad7376c..d43018e 100644
+index ad7376c..0e9c62a 100644
 --- a/android/app/build.gradle.kts
 +++ b/android/app/build.gradle.kts
 @@ -44,11 +44,17 @@ android {
@@ -20,7 +20,7 @@ index ad7376c..d43018e 100644
 +        // [fork patch] Keep a distinct application ID regardless of branding, so
 +        // this build can be installed alongside an official touchHLE release
 +        // rather than clashing with it. Must match src/paths.rs.
-+        applicationIdSuffix = "preview"
++        applicationIdSuffix = "ayakapatch"
          resValue("string", "app_name", join("touchHLE", " ", branding))
          buildConfigField("String", "APP_NAME", "\"${join("touchHLE", " ", branding)}\"")
          manifestPlaceholders["icon"] = join("@drawable/icon", "_", branding.lowercase())
@@ -55,23 +55,30 @@ index ad7376c..d43018e 100644
              isDebuggable = true // allow use of ADB to manage files, etc
          }
 diff --git a/src/paths.rs b/src/paths.rs
-index d0ab20b..76f6095 100644
+index d0ab20b..21e6c38 100644
 --- a/src/paths.rs
 +++ b/src/paths.rs
-@@ -153,7 +153,12 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
+@@ -153,12 +153,14 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
  pub fn url_for_opening_user_data_dir() -> Result<String, String> {
      if std::env::consts::OS == "android" {
          // See DocumentsProvider.kt, app/build.gradle and AndroidManifest.xml
 -        let brand = crate::branding();
+-        Ok(format!(
+-            "content://org.touchhle.android{}{}.provider/root/root",
+-            if brand.is_empty() { "" } else { "." },
+-            brand.to_lowercase()
+-        ))
 +        //
-+        // [fork patch] This fork builds unbranded (see branding()), but keeps
-+        // the ".preview" application ID suffix so it can coexist with an
-+        // official touchHLE install. The provider authority has to match the
-+        // application ID, so it is pinned here instead of being derived.
-+        let brand = "preview";
-         Ok(format!(
-             "content://org.touchhle.android{}{}.provider/root/root",
-             if brand.is_empty() { "" } else { "." },
++        // [fork patch] This fork builds unbranded (see branding()), but uses a
++        // distinct "ayakapatch" application ID suffix so it installs alongside
++        // an official touchHLE release instead of clashing with it. The provider
++        // authority is derived from the application ID, so it is pinned here
++        // rather than computed from the (now empty) branding.
++        // Must match android/app/build.gradle.kts.
++        Ok("content://org.touchhle.android.ayakapatch.provider/root/root".to_string())
+     } else {
+         let path = user_data_base_path()
+             .join(".")
 diff --git a/src/version/lib.rs b/src/version/lib.rs
 index ff5a09d..41ece20 100644
 --- a/src/version/lib.rs
