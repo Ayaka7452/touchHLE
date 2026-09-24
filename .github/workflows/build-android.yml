@@ -247,7 +247,7 @@ jobs:
             echo ""
             echo "- Removes the \`PREVIEW\` watermark/branding from the main window and app picker."
             echo "- Uses the standard touchHLE launcher icon instead of the \`PREVIEW\` icon."
-            echo "- Keeps a distinct \`org.touchhle.android.ayakapatch\` application ID, so it installs"
+            echo "- Keeps a distinct \`org.touchhle.android.ayaka\` application ID, so it installs"
             echo "  alongside an official touchHLE release instead of clashing with it."
             echo "- Signs the release APK with a personal key."
             echo ""

@@ -1,0 +1,6 @@
+# Patch files and CI definitions must keep LF endings, otherwise `git apply`
+# rejects them on a machine with core.autocrlf=true.
+*.patch text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
