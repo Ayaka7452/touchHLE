@@ -44,11 +44,17 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        val branding = getTouchHLEBranding()
+        // [fork patch] Upstream derives this from the touchHLE_version tool,
+        // which reports "PREVIEW" (or "UNOFFICIAL" for forks) and appends it to
+        // the app name, launcher icon and version name. This fork builds
+        // unbranded (see src/version/lib.rs), so the branding stays empty and
+        // the plain "touchHLE" name plus the standard @drawable/icon are used.
+        val branding = ""
         applicationId = "org.touchhle.android"
-        if (!branding.isEmpty()) {
-            applicationIdSuffix = branding.lowercase()
-        }
+        // [fork patch] Keep a distinct application ID regardless of branding, so
+        // this build can be installed alongside an official touchHLE release
+        // rather than clashing with it. Must match src/paths.rs.
+        applicationIdSuffix = "ayaka"
         resValue("string", "app_name", join("touchHLE", " ", branding))
         buildConfigField("String", "APP_NAME", "\"${join("touchHLE", " ", branding)}\"")
         manifestPlaceholders["icon"] = join("@drawable/icon", "_", branding.lowercase())
@@ -80,9 +86,28 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    // [fork patch] Release signing key, supplied through the environment by
+    // .github/workflows/. When it is absent (e.g. a local build) we simply
+    // fall back to the debug key instead of failing.
+    val forkKeystore =
+        System.getenv("KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        create("forkRelease") {
+            forkKeystore?.let {
+                storeFile = it
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (forkKeystore != null) {
+                signingConfigs.getByName("forkRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isDebuggable = true // allow use of ADB to manage files, etc
         }

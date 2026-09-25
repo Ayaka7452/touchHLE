@@ -153,12 +153,14 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
 pub fn url_for_opening_user_data_dir() -> Result<String, String> {
     if std::env::consts::OS == "android" {
         // See DocumentsProvider.kt, app/build.gradle and AndroidManifest.xml
-        let brand = crate::branding();
-        Ok(format!(
-            "content://org.touchhle.android{}{}.provider/root/root",
-            if brand.is_empty() { "" } else { "." },
-            brand.to_lowercase()
-        ))
+        //
+        // [fork patch] This fork builds unbranded (see branding()), but uses a
+        // distinct "ayaka" application ID suffix so it installs alongside an
+        // official touchHLE release instead of clashing with it. The provider
+        // authority is derived from the application ID, so it is pinned here
+        // rather than computed from the (now empty) branding.
+        // Must match android/app/build.gradle.kts.
+        Ok("content://org.touchhle.android.ayaka.provider/root/root".to_string())
     } else {
         let path = user_data_base_path()
             .join(".")
