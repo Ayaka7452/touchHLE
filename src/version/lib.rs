@@ -13,20 +13,11 @@ pub const GITHUB_REF_NAME: Option<&str> = option_env!("GITHUB_REF_NAME");
 pub const GITHUB_EVENT_NAME: Option<&str> = option_env!("GITHUB_EVENT_NAME");
 
 pub fn branding() -> &'static str {
-    if GITHUB_RUN_ID.is_none() {
-        return "";
-    }
-    if GITHUB_EVENT_NAME == Some("create")
-        && VERSION
-            .strip_prefix('v')
-            .is_some_and(|v| v == env!("CARGO_PKG_VERSION"))
-        && GITHUB_REF_NAME.unwrap() == VERSION
-    {
-        return "";
-    }
-    if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("touchHLE/touchHLE"), Some("trunk")) {
-        "PREVIEW"
-    } else {
-        "UNOFFICIAL"
-    }
+    // [fork patch] Ayaka7452/touchHLE: always report an unbranded build.
+    //
+    // Upstream returns "PREVIEW" (or "UNOFFICIAL" when built from a fork) for
+    // anything that isn't an official release, which draws a watermark on the
+    // main window/app picker and selects a dedicated launcher icon. This fork
+    // deliberately opts out: no watermark, and the standard release icon.
+    ""
 }
