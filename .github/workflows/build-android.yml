@@ -99,6 +99,16 @@ jobs:
           ref: release
           fetch-depth: 0
 
+      # src/version/build.rs derives the version name with `git describe`.
+      # This fork predates upstream's v0.3.0 tag, so without these tags every
+      # APK reported a v0.2.3-* version. Fetch them explicitly rather than
+      # relying on the checkout action's tag behaviour.
+      - name: Sync upstream release tags
+        run: |
+          set -e
+          git remote add upstream https://github.com/touchHLE/touchHLE.git 2>/dev/null || true
+          git fetch upstream --tags --force
+
       - name: Get submodules
         run: git submodule update --init
 
@@ -257,6 +267,8 @@ jobs:
             echo "- Keeps a distinct \`org.touchhle.android.ayaka\` application ID, so it installs"
             echo "  alongside an official touchHLE release instead of clashing with it."
             echo "- Signs the release APK with a personal key."
+            echo "- Reports the upstream v0.3.0+ version name and a real version code (commit count),"
+            echo "  instead of the manifest's hard-coded \`1\`."
             echo ""
             echo "The changes are kept as patch files in \`patches/\` on the \`trunk\` branch and"
             echo "applied onto upstream source on each build; the \`release\` branch holds the"

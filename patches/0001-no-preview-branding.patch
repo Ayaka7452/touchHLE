@@ -1,8 +1,25 @@
 diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
-index ad7376c..ef44102 100644
+index ad7376c..8369258 100644
 --- a/android/app/build.gradle.kts
 +++ b/android/app/build.gradle.kts
-@@ -44,11 +44,17 @@ android {
+@@ -33,6 +33,16 @@ fun getTouchHLEVersionName(): String {
+     return runTouchHLEVersionTool(/* wantBranding: */ false)
+ }
+ 
++// [fork patch] Upstream hard-codes android:versionCode="1" in the manifest,
++// so the installer showed every build as "version <name> (1)". Use the commit
++// count instead: a real, monotonically increasing code that follows upstream
++// as new commits are merged.
++fun getTouchHLEVersionCode(): Int {
++    return providers.exec {
++        commandLine("git", "rev-list", "--count", "HEAD")
++    }.standardOutput.asText.get().trim().toInt()
++}
++
+ fun join(prefix: String, separator: String, branding: String): String {
+     return if (branding.isEmpty()) prefix else prefix + separator + branding
+ }
+@@ -44,16 +54,23 @@ android {
          buildConfig = true
      }
      defaultConfig {
@@ -24,7 +41,13 @@ index ad7376c..ef44102 100644
          resValue("string", "app_name", join("touchHLE", " ", branding))
          buildConfigField("String", "APP_NAME", "\"${join("touchHLE", " ", branding)}\"")
          manifestPlaceholders["icon"] = join("@drawable/icon", "_", branding.lowercase())
-@@ -80,9 +86,28 @@ android {
+         buildConfigField("int", "APP_ICON", join("R.drawable.icon", "_", branding.lowercase()))
+         versionName = join(getTouchHLEVersionName(), " ", branding)
++        versionCode = getTouchHLEVersionCode()
+ 
+         minSdk = 21 // first version with AArch64
+         targetSdk = 31
+@@ -80,9 +97,28 @@ android {
      kotlinOptions {
          jvmTarget = "11"
      }

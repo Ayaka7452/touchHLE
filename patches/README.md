@@ -10,8 +10,12 @@ live here as patch files, so re-syncing with upstream is a matter of merging
 
 | Patch | What it does |
 | --- | --- |
-| `0001-no-preview-branding.patch` | Removes the `PREVIEW` watermark/branding and switches to the standard launcher icon; pins the `org.touchhle.android.ayaka` application ID and matching provider authority; adds release signing. |
+| `0001-no-preview-branding.patch` | Removes the `PREVIEW` watermark/branding and switches to the standard launcher icon; pins the `org.touchhle.android.ayaka` application ID and matching provider authority; adds release signing; derives a real `versionCode` from the commit count instead of the manifest's hard-coded `1`. |
 | `0002-remove-upstream-release-workflow.patch` | Deletes upstream's release workflow, which would otherwise build macOS/Windows/Android on every push to this fork and burn Actions minutes. |
+
+The build workflow also fetches upstream release tags before compiling:
+`src/version/build.rs` derives the version name with `git describe`, so without
+upstream's `v0.3.0` tag every APK would wrongly report a `v0.2.3-*` version.
 
 Apply manually with:
 
