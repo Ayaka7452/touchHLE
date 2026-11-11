@@ -280,9 +280,12 @@ jobs:
           # The tag is derived from the upstream commit, so rebuilding the same
           # commit reuses the release: replace the APK and refresh the notes,
           # otherwise a rebuilt release would keep describing the old build.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK" --clobber
-            gh release edit "$TAG" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
+          # The extra `upstream` remote makes gh guess touchHLE/touchHLE as the
+          # target repository, so pin every command to this fork explicitly.
+          REPO="$GITHUB_REPOSITORY"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber --repo "$REPO"
+            gh release edit "$TAG" --repo "$REPO" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
           else
-            gh release create "$TAG" "$APK" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release create "$TAG" "$APK" --repo "$REPO" --title "touchHLE $SHA ($DATE)" --notes-file "$RUNNER_TEMP/notes.md"
           fi
