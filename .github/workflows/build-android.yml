@@ -89,7 +89,9 @@ jobs:
     name: Build, sign and release
     needs: prepare
     if: ${{ needs.prepare.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04 (2026-11), whose newer JDK/7-Zip broke
+    # the Gradle build. Pin the image verified working on 2026-09-24.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v4
@@ -193,7 +195,7 @@ jobs:
         run: |
           set -e
           cd android
-          ../gradle/gradle-8.11.1/bin/gradle assembleRelease
+          ../gradle/gradle-8.11.1/bin/gradle assembleRelease --stacktrace
           mv app/build/outputs/apk/release/app-release.apk ../touchHLE.apk
         env:
           ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
