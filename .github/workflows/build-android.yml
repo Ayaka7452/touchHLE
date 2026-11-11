@@ -150,7 +150,9 @@ jobs:
         run: curl -L -o android-ndk-r25c-linux.zip "https://dl.google.com/android/repository/android-ndk-r25c-linux.zip"
       - if: ${{ steps.cache-android-ndk.outputs.cache-hit != 'true' }}
         name: Extract Android NDK
-        run: 7z -oandroid-ndk -snld x android-ndk-r25c-linux.zip
+        # 7-Zip 26 rejects the NDK's chained symlinks ("Dangerous link via
+        # another link") and exits 2 even with -snld. unzip handles them.
+        run: unzip -q android-ndk-r25c-linux.zip -d android-ndk
 
       - name: Cache cargo build
         uses: actions/cache@v4
